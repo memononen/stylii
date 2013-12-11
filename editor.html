@@ -2,19 +2,19 @@
 <html>
 <head>
 	<meta charset="UTF-8">
-	<title>Bezier Tool</title>
+	<title>Stylii</title>
 	<link rel="stylesheet" href="css/style.css">
-	<script src="jquery.js"></script>
-	<script type="text/javascript" src="paper.js"></script>
-	<script type="text/javascript" src="editor.paper.js"></script>
+	<script type="text/javascript" src="js/jquery.js"></script>
+	<script type="text/javascript" src="js/paper.js"></script>
+	<script type="text/javascript" src="js/editor.js"></script>
 </head>
 <body>
-	<p>
-	An emulation of a vector pen tool.
-	Click and drag to add a points.<br/>
-	Drag segment handles and points to manipulate them.
-	Close the path to start a new one.
-	</p>
+	<ul id="tools">
+		<li id="tool-select" class="button"><img src="img/icon-arrow-black.png" /></li>
+		<li id="tool-direct-select" class="button"><img src="img/icon-arrow-white.png" /></li>
+		<li id="tool-pen" class="button"><img src="img/icon-pen.png" /></li>
+		<li id="tool-zoompan" class="button"><img src="img/icon-hand.png" /></li>
+	</ul>
 	<canvas id="canvas" resize></canvas>
 </body>
 </html>

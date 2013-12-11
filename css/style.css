@@ -1,4 +1,122 @@
 body {
 	margin: 0;
 	overflow: hidden;
+	font-family: Helvetica, sans-serif;
+	font-size: 14px;
+}
+
+#tools {
+	position: fixed;
+	left: 40px;
+	top: 40px;
+	width: 28px;
+	padding: 2px;
+	background: #fff;
+	border-radius: 2px;
+	background: rgba(255,255,255,0.8);
+	margin: 0;
+	box-shadow: 0px 3px 6px rgba(0,0,0,0.4);
+}
+
+.button {
+	display: inline-block;
+	cursor: default;
+	padding: 4px;
+}
+
+.button:last-child {
+	margin-bottom: 0px;
+}
+
+.button:hover {
+	background: #222;
+}
+
+.button.selected {
+	background: #888;
+}
+
+.button.selected:hover {
+	background: rgba(0,0,0,0.9);
+}
+
+.cursor-pen-add {
+	cursor: url('../img/cursor-pen-add.png') 6 2, default;
+}
+
+.cursor-pen-edit {
+	cursor: url('../img/cursor-pen-edit.png') 6 2, default;
+}
+
+.cursor-pen-close {
+	cursor: url('../img/cursor-pen-close.png') 6 2, default;
+}
+
+.cursor-zoom-in {
+	cursor: url('../img/cursor-zoom-in.png') 7 7, default;
+}
+
+.cursor-zoom-out {
+	cursor: url('../img/cursor-zoom-out.png') 7 7, default;
+}
+
+.cursor-hand {
+	cursor: url('../img/cursor-hand.png') 10 10, default;
+}
+
+.cursor-hand-grab {
+	cursor: url('../img/cursor-hand-grab.png') 10 10, default;
+}
+
+.cursor-arrow-black {
+	cursor: url('../img/cursor-arrow-black.png') 2 2, default;
+}
+
+.cursor-arrow-black-point {
+	cursor: url('../img/cursor-arrow-black-point.png') 2 2, default;
+}
+
+.cursor-arrow-black-shape {
+	cursor: url('../img/cursor-arrow-black-shape.png') 2 2, default;
+}
+
+.cursor-arrow-white {
+	cursor: url('../img/cursor-arrow-white.png') 2 2, default;
+}
+
+.cursor-arrow-white-point {
+	cursor: url('../img/cursor-arrow-white-point.png') 2 2, default;
+}
+
+.cursor-arrow-white-shape {
+	cursor: url('../img/cursor-arrow-white-shape.png') 2 2, default;
+}
+
+.cursor-arrow-small {
+	cursor: url('../img/cursor-arrow-small.png') 2 2, default;
+}
+
+.cursor-arrow-small-point {
+	cursor: url('../img/cursor-arrow-small-point.png') 2 2, default;
+}
+
+.cursor-scale-0 {
+	cursor: url('../img/cursor-scale-0.png') 9 9, default;
+}
+
+.cursor-scale-45 {
+	cursor: url('../img/cursor-scale-45.png') 9 9, default;
+}
+
+.cursor-scale-90 {
+	cursor: url('../img/cursor-scale-90.png') 9 9, default;
+}
+
+.cursor-scale-135 {
+	cursor: url('../img/cursor-scale-135.png') 9 9, default;
+}
+
+
+
+#canvas {
 }
