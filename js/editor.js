@@ -188,26 +188,119 @@ toolSelect.scale = {
 	pivot: null,
 	corner: null,
 	size: null,
-	originalXform: null
+	originalXform: null,
 };
 
-toolSelect.captureSelectionTransforms = function() {
-	this.scale.originalXform = {};
-	var selected = paper.project.selectedItems;
-	for (var i = 0; i < selected.length; i++) {
-		var item = selected[i];
-		if (item.guide) continue;
-		this.scale.originalXform[item.id] = item.matrix.clone();
+toolSelect.resetHot = function(type, event, mode) {
+};
+toolSelect.testHot = function(type, event, mode) {
+	var hot = false;
+	if (mode == 'tool-select' || mode == 'tool-direct-select') {
+		hot = true;
+	}
+
+	if (type == 'mode') {
+		if (mode == 'tool-select') {
+			this.updateSelectionBounds();
+		} else {
+			this.clearSelectionBounds();
+		}
+	}
+
+	if (hot) {
+		if (mode == 'tool-select') {
+			toolSelect.direct = false;
+		} else {
+			toolSelect.direct = true;
+		}
+		this.hitTest(event);
+		return true;
+	}
+	return false;
+};
+
+
+toolSelect.hitTest = function(event) {
+	var hitSize = 4.0 / paper.view.zoom;
+
+	// Hit test items.
+	this.hitItem = paper.project.hitTest(event.point, { fill:true, stroke:true, tolerance: hitSize });
+
+	if (toolSelect.direct) {
+		// Hit test selected handles
+		var hit = paper.project.hitTest(event.point, { selected: true, handles: true, tolerance: hitSize });
+		if (hit) {
+			this.hitItem = hit;
+		}
+		// Hit test points
+		var hit = paper.project.hitTest(event.point, { segments: true, tolerance: hitSize });
+		if (hit) {
+			this.hitItem = hit;
+		}
+	} else {
+		// Hit test selection rectangle
+		if (this.boundsShape) {
+			var hit = this.boundsShape.hitTest(event.point, { bounds: true, guides: true, tolerance: hitSize });
+			if (hit) {
+				this.hitItem = hit;
+			}
+		}
+	}
+
+	if (this.hitItem) {
+		if (this.hitItem.type == 'bounds') {
+			// Normalize the direction so that corners are at 45° angles.
+			var dir = event.point.subtract(this.selectionBounds.center);
+			dir.x /= this.selectionBounds.width*0.5;
+			dir.y /= this.selectionBounds.height*0.5;
+			setCanvasScaleCursor(dir);
+		} else if (this.hitItem.type == 'fill' || this.hitItem.type == 'stroke') {
+			if (this.hitItem.item.selected) {
+				setCanvasCursor('cursor-arrow-small');
+			} else {
+				if (this.direct)
+					setCanvasCursor('cursor-arrow-white-shape');
+				else
+					setCanvasCursor('cursor-arrow-black-shape');
+			}
+		} else if (this.hitItem.type == 'segment' || this.hitItem.type == 'handle-in' || this.hitItem.type == 'handle-out') {
+			if (this.hitItem.segment.selected) {
+				setCanvasCursor('cursor-arrow-small-point');
+			} else {
+				if (this.direct)
+					setCanvasCursor('cursor-arrow-white-point');
+				else
+					setCanvasCursor('cursor-arrow-black-point');
+			}
+		}
+	} else {
+		if (toolSelect.direct)
+			setCanvasCursor('cursor-arrow-white');
+		else
+			setCanvasCursor('cursor-arrow-black');
 	}
 };
-toolSelect.restoreSelectionTransforms = function() {
+
+toolSelect.captureSelectionState = function() {
+	this.scale.originalContent = {};
 	var selected = paper.project.selectedItems;
 	for (var i = 0; i < selected.length; i++) {
 		var item = selected[i];
 		if (item.guide) continue;
-		if (this.scale.originalXform.hasOwnProperty(item.id)) {
-			var matrix = this.scale.originalXform[item.id];
-			item.set({ matrix: matrix.clone() });
+//		this.scale.originalContent[item.id] = item.exportJSON();
+		this.scale.originalContent[item.id] = Base.serialize(item);
+	}
+};
+toolSelect.restoreSelectionState = function() {
+	var selected = paper.project.selectedItems;
+	for (var i = 0; i < selected.length; i++) {
+		var item = selected[i];
+		if (item.guide) continue;
+		if (this.scale.originalContent.hasOwnProperty(item.id)) {
+			var id = item.id;
+			var json = this.scale.originalContent[item.id];
+			item.importJSON(json);
+			item._id = id;
 		}
 	}
 };
@@ -228,7 +321,7 @@ toolSelect.updateSelectionBounds = function() {
 		rect._boundsSelected = true;
 		rect.selected = true;
 		rect.guide = true;
-		rect.transformContent = false;
+//		rect.transformContent = false;
 		this.boundsShape = rect;
 	}
 };
@@ -254,7 +347,7 @@ toolSelect.on({
 
 		if (this.hitItem) {
 			if (this.hitItem.type == 'bounds') {
-				this.captureSelectionTransforms();
+				this.captureSelectionState();
 				this.mode = 'scale';
 				var pivotName = paper.Base.camelize(oppositeCorner[this.hitItem.name]);
 				var cornerName = paper.Base.camelize(this.hitItem.name);
@@ -367,7 +460,7 @@ toolSelect.on({
 			if (Math.abs(this.scale.size.y) > 0.0000001)
 				sy = size.y / this.scale.size.y;
 
-			this.restoreSelectionTransforms();
+			this.restoreSelectionState();
 
 			var selected = paper.project.selectedItems;
 			for (var i = 0; i < selected.length; i++) {
@@ -379,64 +472,7 @@ toolSelect.on({
 		}
 	},
 	mousemove: function(event) {
-		var hitSize = 4.0 / paper.view.zoom;
-
-		// Hit test items.
-		this.hitItem = paper.project.hitTest(event.point, { fill:true, stroke:true, tolerance: hitSize });
-
-		if (toolSelect.direct) {
-			// Hit test selected handles
-			var hit = paper.project.hitTest(event.point, { selected: true, handles: true, tolerance: hitSize });
-			if (hit) {
-				this.hitItem = hit;
-			}
-			// Hit test points
-			var hit = paper.project.hitTest(event.point, { segments: true, tolerance: hitSize });
-			if (hit) {
-				this.hitItem = hit;
-			}
-		} else {
-			// Hit test selection rectangle
-			if (this.boundsShape) {
-				var hit = this.boundsShape.hitTest(event.point, { bounds: true, guides: true, tolerance: hitSize });
-				if (hit) {
-					this.hitItem = hit;
-				}
-			}
-		}
-
-		if (this.hitItem) {
-			if (this.hitItem.type == 'bounds') {
-				// Normalize the direction so that corners are at 45° angles.
-				var dir = event.point.subtract(this.selectionBounds.center);
-				dir.x /= this.selectionBounds.width*0.5;
-				dir.y /= this.selectionBounds.height*0.5;
-				setCanvasScaleCursor(dir);
-			} else if (this.hitItem.type == 'fill' || this.hitItem.type == 'stroke') {
-				if (this.hitItem.item.selected) {
-					setCanvasCursor('cursor-arrow-small');
-				} else {
-					if (this.direct)
-						setCanvasCursor('cursor-arrow-white-shape');
-					else
-						setCanvasCursor('cursor-arrow-black-shape');
-				}
-			} else if (this.hitItem.type == 'segment' || this.hitItem.type == 'handle-in' || this.hitItem.type == 'handle-out') {
-				if (this.hitItem.segment.selected) {
-					setCanvasCursor('cursor-arrow-small-point');
-				} else {
-					if (this.direct)
-						setCanvasCursor('cursor-arrow-white-point');
-					else
-						setCanvasCursor('cursor-arrow-black-point');
-				}
-			}
-		} else {
-			if (toolSelect.direct)
-				setCanvasCursor('cursor-arrow-white');
-			else
-				setCanvasCursor('cursor-arrow-black');
-		}
+		this.hitTest(event);
 	}
 });
 
@@ -446,6 +482,21 @@ toolZoomPan.distanceThreshold = 8;
 toolZoomPan.mouseStartPos = new Point();
 toolZoomPan.mode = 'pan';
 toolZoomPan.zoomFactor = 1.3;
+toolZoomPan.resetHot = function(type, event, mode) {
+};
+toolZoomPan.testHot = function(type, event, mode) {
+	var hot = false;
+	if (mode == 'tool-zoompan')
+		hot = true;
+	// Choose tool when space is pressed.
+	if (event && event.modifiers.space)
+		hot = true;
+	if (hot) {
+		this.previewCursor(event);
+		return true;
+	}
+	return false;
+};
 toolZoomPan.previewCursor = function(event) {
 	if (event.modifiers.command) {
 		if (event.modifiers.command && !event.modifiers.option) {
@@ -531,6 +582,51 @@ toolPen.path = null;
 toolPen.clearHandles = false;
 toolPen.hoverSegment = null;
 toolPen.currentSegment = null;
+toolPen.resetHot = function(type, event, mode) {
+};
+toolPen.testHot = function(type, event, mode) {
+	var hot = false;
+	if (mode == 'tool-pen')
+		hot = true;
+
+	if (hot) {
+		this.hitTest(event);
+		return true;
+	}
+	return false;
+};
+toolPen.hitTest = function(event) {
+	this.mode = 'add';
+	this.hoverSegment = null;
+	if (this.path) {
+		var hitSize = 4.0 / paper.view.zoom;
+		var result = this.path.hitTest(event.point, { segments: true, handles: true, tolerance: hitSize });
+		if (result) {
+			this.mode = 'move';
+			this.type = result.type;
+			this.hoverSegment = result.segment;
+
+			if (this.path.segments.length > 1 && result.type == 'segment' && result.segment.index == 0) {
+				this.mode = 'close';
+				setCanvasCursor('cursor-pen-close');
+			} else {
+
+				if (result.type == 'segment')
+					setCanvasCursor('cursor-arrow-small-point');
+				else if (result.type == 'handle-in')
+					setCanvasCursor('cursor-arrow-small-point');
+				else if (result.type == 'handle-out')
+					setCanvasCursor('cursor-arrow-small-point');
+				else
+					setCanvasCursor('cursor-pen-edit');
+			}
+		} else {
+			setCanvasCursor('cursor-pen-add');
+		}
+	} else {
+		setCanvasCursor('cursor-pen-add');
+	}
+};
 toolPen.on({
 	activate: function() {
 		$("#tools").children().removeClass("selected");
@@ -551,7 +647,7 @@ toolPen.on({
 				paper.project.activeLayer.selected = false;
 				this.path = new Path();
 				this.path.strokeColor = 'black';
-				this.path.transformContent = false;
+//				this.path.transformContent = false;
 			}
 			this.currentSegment = this.path.add(event.point);
 		} else if (this.mode == 'close') {
@@ -590,37 +686,85 @@ toolPen.on({
 		}
 	},
 	mousemove: function(event) {
-		this.mode = 'add';
-		this.hoverSegment = null;
-		if (this.path) {
-			var hitSize = 4.0 / paper.view.zoom;
-			var result = this.path.hitTest(event.point, { segments: true, handles: true, tolerance: hitSize });
-			if (result) {
-				this.mode = 'move';
-				this.type = result.type;
-				this.hoverSegment = result.segment;
-
-				if (this.path.segments.length > 1 && result.type == 'segment' && result.segment.index == 0) {
-					this.mode = 'close';
-					setCanvasCursor('cursor-pen-close');
-				} else {
-
-					if (result.type == 'segment')
-						setCanvasCursor('cursor-arrow-small-point');
-					else if (result.type == 'handle-in')
-						setCanvasCursor('cursor-arrow-small-point');
-					else if (result.type == 'handle-out')
-						setCanvasCursor('cursor-arrow-small-point');
-					else
-						setCanvasCursor('cursor-pen-edit');
-				}
-			} else {
-				setCanvasCursor('cursor-pen-add');
-			}
-		}
+		this.hitTest(event);
 	}
 });
 
+
+var toolStack = new Tool();
+toolStack.stack = [
+	toolZoomPan,
+	toolPen,
+	toolSelect
+];
+toolStack.hotTool = null;
+toolStack.activeTool = null;
+toolStack.setToolMode = function(mode) {
+	var event = new paper.Event();
+	this.mode = mode;
+	this.testHot('mode', event);
+};
+toolStack.testHot = function(type, event) {
+	// Reset the state of the tool before testing.
+	this.hotTool = null;
+	for (var i = 0; i < this.stack.length; i++)
+		this.stack[i].resetHot(type, event, this.mode);
+	// Pick the first hot tool.
+	for (var i = 0; i < this.stack.length; i++) {
+		if (this.stack[i].testHot(type, event, this.mode)) {
+			this.hotTool = this.stack[i];
+			break;
+		}
+	}
+};
+toolStack.on({
+	activate: function() {
+		this.activeTool = null;
+		this.hotTool = null;
+	},
+
+	deactivate: function() {
+		this.activeTool = null;
+		this.hotTool = null;
+	},
+
+	mousedown: function(event) {
+		if (this.hotTool) {
+			this.activeTool = this.hotTool;
+			this.activeTool.fire('mousedown', event);
+		}
+	},
+
+	mouseup: function(event) {
+		if (this.activeTool)
+			this.activeTool.fire('mouseup', event);
+		this.activeTool = null;
+		this.testHot('mouseup', event);
+	},
+
+	mousedrag: function(event) {
+		if (this.activeTool)
+			this.activeTool.fire('mousedrag', event);
+	},
+
+	mousemove: function(event) {
+		this.testHot('mousemove', event);
+	},
+
+	keydown: function(event) {
+		if (this.activeTool)
+			this.activeTool.fire('keydown', event);
+		else
+			this.testHot('keydown', event);
+	},
+
+	keyup: function(event) {
+		if (this.activeTool)
+			this.activeTool.fire('keyup', event);
+		else
+			this.testHot('keyup', event);
+	}
+});
 
 
 $(document).ready(function() {
@@ -629,27 +773,33 @@ $(document).ready(function() {
 
 	var path1 = new Path.Circle(new Point(180, 50), 30);
 	path1.strokeColor = 'black';
-	path1.transformContent = false;
+//	path1.transformContent = false;
 	var path2 = new Path.Circle(new Point(180, 150), 20);
 	path2.fillColor = 'grey';
-	path2.transformContent = false;
+//	path2.transformContent = false;
 
 	$("#tool-select").click(function() {
-		toolSelect.direct = false;
-		toolSelect.activate();
+		toolStack.setToolMode('tool-select');
+//		toolSelect.direct = false;
+//		toolSelect.activate();
 	});
 	$("#tool-direct-select").click(function() {
-		toolSelect.direct = true;
-		toolSelect.activate();
+		toolStack.setToolMode('tool-direct-select');
+//		toolSelect.direct = true;
+//		toolSelect.activate();
 	});
 	$("#tool-pen").click(function() {
-		toolPen.activate();
+		toolStack.setToolMode('tool-pen');
+//		toolPen.activate();
 	});
 	$("#tool-zoompan").click(function() {
-		toolZoomPan.activate();
+		toolStack.setToolMode('tool-zoompan');
+//		toolZoomPan.activate();
 	});
 
-	toolSelect.activate();
+	toolStack.activate();
+	toolStack.setToolMode('tool-select');
+//	toolSelect.activate();
 
 	paper.view.draw();
 });
