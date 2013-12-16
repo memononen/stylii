@@ -116,6 +116,38 @@ body {
 	cursor: url('../img/cursor-scale-135.png') 9 9, default;
 }
 
+.cursor-rotate-0 {
+	cursor: url('../img/cursor-rotate-0.png') 9 9, default;
+}
+
+.cursor-rotate-45 {
+	cursor: url('../img/cursor-rotate-45.png') 9 9, default;
+}
+
+.cursor-rotate-90 {
+	cursor: url('../img/cursor-rotate-90.png') 9 9, default;
+}
+
+.cursor-rotate-135 {
+	cursor: url('../img/cursor-rotate-135.png') 9 9, default;
+}
+
+.cursor-rotate-180 {
+	cursor: url('../img/cursor-rotate-180.png') 9 9, default;
+}
+
+.cursor-rotate-225 {
+	cursor: url('../img/cursor-rotate-225.png') 9 9, default;
+}
+
+.cursor-rotate-270 {
+	cursor: url('../img/cursor-rotate-270.png') 9 9, default;
+}
+
+.cursor-rotate-315 {
+	cursor: url('../img/cursor-rotate-315.png') 9 9, default;
+}
+
 
 
 #canvas {
