@@ -94,6 +94,14 @@ body {
 	cursor: url('../img/cursor-pen-close.png') 6 2, default;
 }
 
+.cursor-pen-adjust {
+	cursor: url('../img/cursor-pen-adjust.png') 6 2, default;
+}
+
+.cursor-pen-join {
+	cursor: url('../img/cursor-pen-join.png') 6 2, default;
+}
+
 .cursor-zoom-in {
 	cursor: url('../img/cursor-zoom-in.png') 7 7, default;
 }

@@ -628,7 +628,7 @@ toolSelect.testHot = function(type, event, mode) {
 	return this.hitTest(event);
 };
 toolSelect.hitTest = function(event) {
-	var hitSize = 4.0 / paper.view.zoom;
+	var hitSize = 4.0; // / paper.view.zoom;
 
 	// Hit test items.
 	this.hitItem = paper.project.hitTest(event.point, { fill:true, stroke:true, tolerance: hitSize });
@@ -759,7 +759,7 @@ toolDirectSelect.testHot = function(type, event, mode) {
 };
 
 toolDirectSelect.hitTest = function(event) {
-	var hitSize = 4.0 / paper.view.zoom;
+	var hitSize = 4.0; // / paper.view.zoom;
 
 	// Hit test items.
 	this.hitItem = paper.project.hitTest(event.point, { fill:true, stroke:true, tolerance: hitSize });
@@ -988,7 +988,7 @@ toolScale.testHot = function(type, event, mode) {
 };
 
 toolScale.hitTest = function(event) {
-	var hitSize = 6.0 / paper.view.zoom;
+	var hitSize = 6.0; // / paper.view.zoom;
 
 	this.hitItem = null;
 
@@ -1114,7 +1114,7 @@ toolRotate.testHot = function(type, event, mode) {
 };
 
 toolRotate.hitTest = function(event) {
-	var hitSize = 12.0 / paper.view.zoom;
+	var hitSize = 12.0; // / paper.view.zoom;
 
 	this.hitItem = null;
 
@@ -1370,7 +1370,7 @@ toolPen.testHot = function(type, event, mode) {
 	return this.hitTest(event, type);
 };
 toolPen.hitTest = function(event, type) {
-	var hitSize = 4.0 / paper.view.zoom;
+	var hitSize = 4.0; // / paper.view.zoom;
 	var result = null;
 	var isKeyEvent = type == 'mode' || type == 'command' || type == 'keydown' || type == 'keyup';
 
@@ -1401,12 +1401,12 @@ toolPen.hitTest = function(event, type) {
 					} else {
 						// Adjust last handle
 						this.mode = 'adjust';
-						setCanvasCursor('cursor-pen-edit');
+						setCanvasCursor('cursor-pen-adjust');
 					}
 				} else {
 					if (this.pathId != -1) {
 						this.mode = 'join';
-						setCanvasCursor('cursor-pen-close');
+						setCanvasCursor('cursor-pen-join');
 						this.updateTail(result.segment.point);
 					} else {
 						this.mode = 'continue';
@@ -1416,7 +1416,7 @@ toolPen.hitTest = function(event, type) {
 			} else if (result.item.selected) {
 				if (event.modifiers.option) {
 					this.mode = 'convert';
-					setCanvasCursor('cursor-arrow-small');
+					setCanvasCursor('cursor-pen-adjust');
 				} else {
 					this.mode = 'remove';
 					setCanvasCursor('cursor-pen-remove');
