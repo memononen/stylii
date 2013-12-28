@@ -73,8 +73,16 @@ body {
 	background: rgba(0,0,0,0.9);
 }
 
+.cursor-pen-create {
+	cursor: url('../img/cursor-pen-create.png') 6 2, default;
+}
+
 .cursor-pen-add {
 	cursor: url('../img/cursor-pen-add.png') 6 2, default;
+}
+
+.cursor-pen-remove {
+	cursor: url('../img/cursor-pen-remove.png') 6 2, default;
 }
 
 .cursor-pen-edit {

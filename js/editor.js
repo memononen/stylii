@@ -317,7 +317,7 @@ function dragRect(p1, p2) {
 }
 
 function findItemById(id) {
-
+	if (id == -1) return null;
 	function findItem(item) {
 		if (item.id == id)
 			return item;
@@ -541,8 +541,8 @@ toolSelect.changed = false;
 toolSelect.resetHot = function(type, event, mode) {
 };
 toolSelect.testHot = function(type, event, mode) {
-	if (mode != 'tool-select')
-		return;
+/*	if (mode != 'tool-select')
+		return false;*/
 	return this.hitTest(event);
 };
 toolSelect.hitTest = function(event) {
@@ -664,7 +664,8 @@ toolDirectSelect.mouseStartPos = new Point();
 toolDirectSelect.mode = null;
 toolDirectSelect.hitItem = null;
 toolDirectSelect.originalContent = null;
-toolDirectSelect.originalHandlePos = null;
+toolDirectSelect.originalHandleIn = null;
+toolDirectSelect.originalHandleOut = null;
 toolDirectSelect.changed = false;
 
 toolDirectSelect.resetHot = function(type, event, mode) {
@@ -757,10 +758,16 @@ toolDirectSelect.on({
 			} else if (this.hitItem.type == 'handle-in' || this.hitItem.type == 'handle-out') {
 				this.mode = 'move-handle';
 				this.mouseStartPos = event.point.clone();
-				if (this.hitItem.type == 'handle-out')
+				this.originalHandleIn = this.hitItem.segment.handleIn.clone();
+				this.originalHandleOut = this.hitItem.segment.handleOut.clone();
+
+/*				if (this.hitItem.type == 'handle-out') {
 					this.originalHandlePos = this.hitItem.segment.handleOut.clone();
-				else
+					this.originalOppHandleLength = this.hitItem.segment.handleIn.length;
+				} else {
 					this.originalHandlePos = this.hitItem.segment.handleIn.clone();
+					this.originalOppHandleLength = this.hitItem.segment.handleOut.length;
+				}*/
 //				this.originalContent = captureSelectionState(); // For some reason this does not work!
 			}
 			updateSelectionState();
@@ -852,22 +859,20 @@ toolDirectSelect.on({
 
 			var delta = event.point.subtract(this.mouseStartPos);
 
-//			restoreSelectionState(this.originalContent);
-
 			if (this.hitItem.type == 'handle-out') {
-				var handlePos = this.originalHandlePos.add(delta);
+				var handlePos = this.originalHandleOut.add(delta);
 				if (event.modifiers.shift) {
 					handlePos = snapDeltaToAngle(handlePos, Math.PI*2/8);
 				}
 				this.hitItem.segment.handleOut = handlePos;
-				this.hitItem.segment.handleIn = handlePos.negate();
+				this.hitItem.segment.handleIn = handlePos.normalize(-this.originalHandleIn.length);
 			} else {
-				var handlePos = this.originalHandlePos.add(delta);
+				var handlePos = this.originalHandleIn.add(delta);
 				if (event.modifiers.shift) {
 					handlePos = snapDeltaToAngle(handlePos, Math.PI*2/8);
 				}
 				this.hitItem.segment.handleIn = handlePos;
-				this.hitItem.segment.handleOut = handlePos.negate();
+				this.hitItem.segment.handleOut = handlePos.normalize(-this.originalHandleOut.length);
 			}
 
 			updateSelectionState();
@@ -895,8 +900,8 @@ toolScale.changed = false;
 toolScale.resetHot = function(type, event, mode) {
 };
 toolScale.testHot = function(type, event, mode) {
-	if (mode != 'tool-select')
-		return false;
+/*	if (mode != 'tool-select')
+		return false;*/
 	return this.hitTest(event);
 };
 
@@ -1021,8 +1026,8 @@ toolRotate.changed = false;
 toolRotate.resetHot = function(type, event, mode) {
 };
 toolRotate.testHot = function(type, event, mode) {
-	if (mode != 'tool-select')
-		return false;
+/*	if (mode != 'tool-select')
+		return false;*/
 	return this.hitTest(event);
 };
 
@@ -1228,20 +1233,24 @@ toolZoomPan.on({
 });
 
 var toolPen = new Tool();
-toolPen.path = null;
-toolPen.clearHandles = false;
-toolPen.hoverSegment = null;
+toolPen.pathId = -1;
+toolPen.hitResult = null;
+toolPen.mouseStartPos = null;
+toolPen.originalHandleIn = null;
+toolPen.originalHandleOut = null;
 toolPen.currentSegment = null;
+
 toolPen.closePath = function() {
-	if (this.path != null) {
+	if (this.pathId != -1) {
 		deselectAllPoints();
-		this.path = null;
+		this.pathId = -1;
 	}
 };
-toolPen.updateTail = function(point, close) {
-	if (this.path == null)
+toolPen.updateTail = function(point) {
+	var path = findItemById(this.pathId);
+	if (path == null)
 		return;
-	var nsegs = this.path.segments.length;
+	var nsegs = path.segments.length;
 	if (nsegs == 0)
 		return;
 
@@ -1249,18 +1258,13 @@ toolPen.updateTail = function(point, close) {
 	var tail = new Path();
 	tail.strokeColor = color ? color : '#009dec';
 	tail.strokeWidth = 1.0 / paper.view.zoom;
+	tail.guide = true;
 
-	var prevPoint = this.path.segments[nsegs-1].point;
-	var prevHandleOut = this.path.segments[nsegs-1].point.add(this.path.segments[nsegs-1].handleOut);
+	var prevPoint = path.segments[nsegs-1].point;
+	var prevHandleOut = path.segments[nsegs-1].point.add(path.segments[nsegs-1].handleOut);
 
 	tail.moveTo(prevPoint);
-	if (close) {
-		var curPoint = this.path.segments[0].point;
-		var curHandleIn = this.path.segments[0].point.add(this.path.segments[0].handleIn);
-		tail.cubicCurveTo(prevHandleOut, curHandleIn, curPoint);
-	} else {
-		tail.cubicCurveTo(prevHandleOut, point, point);
-	}
+	tail.cubicCurveTo(prevHandleOut, point, point);
 	
 	tail.removeOn({
 		drag: true,
@@ -1274,46 +1278,82 @@ toolPen.resetHot = function(type, event, mode) {
 toolPen.testHot = function(type, event, mode) {
 	if (mode != 'tool-pen')
 		return false;
+	if (event.modifiers.command)
+		return false;
 	if (type == 'keyup') {
 		if (event.key == 'enter' || event.key == 'escape') {
 			this.closePath();
 		}
 	}
-	return this.hitTest(event);
+	return this.hitTest(event, type);
 };
-toolPen.hitTest = function(event) {
-	this.mode = 'add';
-	this.hoverSegment = null;
-	if (this.path) {
-		var hitSize = 4.0 / paper.view.zoom;
-		var result = this.path.hitTest(event.point, { segments: true, handles: true, tolerance: hitSize });
-		if (result) {
-			this.mode = 'move';
-			this.type = result.type;
-			this.hoverSegment = result.segment;
+toolPen.hitTest = function(event, type) {
+	var hitSize = 4.0 / paper.view.zoom;
+	var result = null;
+	var isKeyEvent = type == 'mode' || type == 'command' || type == 'keydown' || type == 'keyup';
 
-			if (this.path.segments.length > 1 && result.type == 'segment' && result.segment.index == 0) {
-				this.mode = 'close';
-				setCanvasCursor('cursor-pen-close');
-				this.updateTail(event.point, true);
+	this.currentSegment = null;
+	this.hitResult = null;
+
+	if (!isKeyEvent)
+		result = paper.project.hitTest(event.point, { segments: true, stroke: true, tolerance: hitSize });
+
+	if (result) {
+		if (result.type == 'stroke') {
+			if (result.item.selected) {
+				// Insert point.
+				this.mode = 'insert';
+				setCanvasCursor('cursor-pen-add');
 			} else {
-
-				if (result.type == 'segment')
-					setCanvasCursor('cursor-arrow-small-point');
-				else if (result.type == 'handle-in')
-					setCanvasCursor('cursor-arrow-small-point');
-				else if (result.type == 'handle-out')
-					setCanvasCursor('cursor-arrow-small-point');
-				else
-					setCanvasCursor('cursor-pen-edit');
+				result = null;
+			} 
+		} else if (result.type == 'segment') {
+			var last = result.item.segments.length-1;
+			if (!result.item.closed && (result.segment.index == 0 || result.segment.index == last)) {
+				if (result.item.id == this.pathId) {
+					if (result.segment.index == 0) {
+						// Close
+						this.mode = 'close';
+						setCanvasCursor('cursor-pen-close');
+						this.updateTail(result.segment.point);
+					} else {
+						// Adjust last handle
+						this.mode = 'adjust';
+						setCanvasCursor('cursor-pen-edit');
+					}
+				} else {
+					if (this.pathId != -1) {
+						this.mode = 'join';
+						setCanvasCursor('cursor-pen-close');
+						this.updateTail(result.segment.point);
+					} else {
+						this.mode = 'continue';
+						setCanvasCursor('cursor-pen-edit');
+					}
+				}
+			} else if (result.item.selected) {
+				if (event.modifiers.option) {
+					this.mode = 'convert';
+					setCanvasCursor('cursor-arrow-small');
+				} else {
+					this.mode = 'remove';
+					setCanvasCursor('cursor-pen-remove');
+				}
+			} else {
+				result = null;
 			}
-		} else {
-			setCanvasCursor('cursor-pen-add');
-			this.updateTail(event.point, false);
 		}
-	} else {
-		setCanvasCursor('cursor-pen-add');
 	}
+
+	if (!result) {
+		this.mode = 'create';
+		setCanvasCursor('cursor-pen-create');
+		if (!isKeyEvent)
+			this.updateTail(event.point);
+	}
+
+	this.hitResult = result;
+
 	return true;
 };
 toolPen.on({
@@ -1323,26 +1363,138 @@ toolPen.on({
 		setCanvasCursor('cursor-pen-add');
 	},
 	deactivate: function() {
-		this.closePath();
+		if (toolStack.mode != 'tool-pen') {
+			this.closePath();
+			updateSelectionState();
+		}
+		this.currentSegment = null;
 	},
 	mousedown: function(event) {
-		if (this.currentSegment)
-			this.currentSegment.selected = false;
 
-		if (this.mode == 'add') {
-			if (!this.path) {
+		deselectAllPoints();
+
+		if (this.mode == 'create') {
+			var path = findItemById(this.pathId);
+			if (path == null) {
 				deselectAll();
-				this.path = new Path();
-				this.path.strokeColor = 'black';
+				path = new Path();
+				path.strokeColor = 'black';
+				this.pathId = path.id;
 			}
-			this.currentSegment = this.path.add(event.point);
+			this.currentSegment = path.add(event.point);
+
+			this.mouseStartPos = event.point.clone();
+			this.originalHandleIn = this.currentSegment.handleIn.clone();
+			this.originalHandleOut = this.currentSegment.handleOut.clone();
+
+		} else if (this.mode == 'insert') {
+			if (this.hitResult != null) {
+				var location = this.hitResult.location;
+
+				var values = location.curve.getValues();
+				var isLinear = location.curve.isLinear();
+				var parts = paper.Curve.subdivide(values, location.parameter);
+				var left = parts[0];
+				var right = parts[1];
+
+				var x = left[6], y = left[7];
+				var segment = new Segment(new Point(x, y),
+					!isLinear && new Point(left[4] - x, left[5] - y),
+					!isLinear && new Point(right[2] - x, right[3] - y));
+
+				var seg = this.hitResult.item.insert(location.index + 1, segment);
+
+				if (!isLinear) {
+					seg.previous.handleOut.set(left[2] - left[0], left[3] - left[1]);
+					seg.next.handleIn.set(right[4] - right[6], right[5] - right[7]);
+				}
+
+				deselectAllPoints();
+				seg.selected = true;
+
+				this.hitResult = null;
+			}
+
 		} else if (this.mode == 'close') {
-			this.currentSegment = this.hoverSegment;
-			if (this.path)
-				this.path.closed = true;
-			this.clearHandles = true;
-		} else if (this.mode == 'move') {
-			this.currentSegment = this.hoverSegment;
+
+			if (this.pathId != -1) {
+				var path = findItemById(this.pathId);
+				path.closed = true;
+			}
+
+			this.currentSegment = this.hitResult.segment;
+			this.currentSegment.handleIn.set(0,0);
+
+			this.mouseStartPos = event.point.clone();
+			this.originalHandleIn = this.currentSegment.handleIn.clone();
+			this.originalHandleOut = this.currentSegment.handleOut.clone();
+
+		} else if (this.mode == 'adjust') {
+
+			this.currentSegment = this.hitResult.segment;
+			this.currentSegment.handleOut.set(0,0);
+
+			this.mouseStartPos = event.point.clone();
+			this.originalHandleIn = this.currentSegment.handleIn.clone();
+			this.originalHandleOut = this.currentSegment.handleOut.clone();
+
+		} else if (this.mode == 'continue') {
+
+			if (this.hitResult.segment.index == 0)
+				this.hitResult.item.reverse();
+
+			this.pathId = this.hitResult.item.id;
+			this.currentSegment = this.hitResult.segment;
+			this.currentSegment.handleOut.set(0,0);
+
+			this.mouseStartPos = event.point.clone();
+			this.originalHandleIn = this.currentSegment.handleIn.clone();
+			this.originalHandleOut = this.currentSegment.handleOut.clone();
+
+		} else if (this.mode == 'convert') {
+
+			this.pathId = this.hitResult.item.id;
+			this.currentSegment = this.hitResult.segment;
+			this.currentSegment.handleIn.set(0,0);
+			this.currentSegment.handleOut.set(0,0);
+
+			this.mouseStartPos = event.point.clone();
+			this.originalHandleIn = this.currentSegment.handleIn.clone();
+			this.originalHandleOut = this.currentSegment.handleOut.clone();
+
+		} else if (this.mode == 'join') {
+
+			var path = findItemById(this.pathId);
+			if (path != null) {
+				var oldPoint = this.hitResult.segment.point.clone();
+				if (this.hitResult.segment.index != 0)
+					this.hitResult.item.reverse();
+				path.join(this.hitResult.item);
+				// Find nearest point to the hit point.
+				var imin = -1;
+				var dmin = 0;
+				for (var i = 0; i < path.segments.length; i++) {
+					var d = oldPoint.getDistance(path.segments[i].point);
+					if (imin == -1 || d < dmin) {
+						dmin = d;
+						imin = i;
+					}
+				}
+				this.currentSegment = path.segments[imin];
+				this.currentSegment.handleIn.set(0,0);
+
+				this.mouseStartPos = event.point.clone();
+				this.originalHandleIn = this.currentSegment.handleIn.clone();
+				this.originalHandleOut = this.currentSegment.handleOut.clone();
+			} else {
+				this.currentSegment = -1;	
+			}
+
+		} else if (this.mode == 'remove') {
+			if (this.hitResult != null) {
+				this.hitResult.item.removeSegment(this.hitResult.segment.index);
+				this.hitResult = null;
+			}
 		}
 
 		if (this.currentSegment)
@@ -1351,24 +1503,70 @@ toolPen.on({
 	mouseup: function(event) {
 		if (this.mode == 'close') {
 			this.closePath();
+		} else if (this.mode == 'join') {
+			this.closePath();
+		} else if (this.mode == 'convert') {
+			this.closePath();
 		}
+		undo.snapshot("Pen");
 		this.mode = null;
+		this.currentSegment = null;
 	},
 	mousedrag: function(event) {
-		if (this.mode == 'move' && this.type == 'segment') {
-			this.currentSegment.point = this.currentSegment.point.add(event.delta);
-		} else {
-			if (this.clearHandles) {
-				this.currentSegment.handleIn = new Point();
-				this.currentSegment.handleOut = new Point();
-				this.clearHandles = false;
-			}
-			var delta = event.delta.clone();
-			if (this.type == 'handle-out' || this.mode == 'add' || this.mode == 'close')
-				delta = delta.negate();
-			this.currentSegment.handleIn = this.currentSegment.handleIn.add(delta);
-			this.currentSegment.handleOut = this.currentSegment.handleOut.subtract(delta);
+		if (this.currentSegment == null)
+			return;
+		var path = findItemById(this.pathId);
+		if (path == null)
+			return;
+
+		var dragIn = false;
+		var dragOut = false;
+		var invert = false;
+
+		if (this.mode == 'create') {
+			dragOut = true;
+			if (this.currentSegment.index > 0)
+				dragIn = true;
+		} else  if (this.mode == 'close') {
+			dragIn = true;
+			invert = true;
+		} else  if (this.mode == 'continue') {
+			dragOut = true;
+		} else if (this.mode == 'adjust') {
+			dragOut = true;
+		} else  if (this.mode == 'join') {
+			dragIn = true;
+			invert = true;
+		} else  if (this.mode == 'convert') {
+			dragIn = true;
+			dragOut = true;
 		}
+
+		if (dragIn || dragOut) {
+			var delta = event.point.subtract(this.mouseStartPos);
+			if (invert)
+				delta = delta.negate();
+			if (dragIn && dragOut) {
+				var handlePos = this.originalHandleOut.add(delta);
+				if (event.modifiers.shift)
+					handlePos = snapDeltaToAngle(handlePos, Math.PI*2/8);
+				this.currentSegment.handleOut = handlePos;
+				this.currentSegment.handleIn = handlePos.negate();
+			} else if (dragOut) {
+				var handlePos = this.originalHandleOut.add(delta);
+				if (event.modifiers.shift)
+					handlePos = snapDeltaToAngle(handlePos, Math.PI*2/8);
+				this.currentSegment.handleOut = handlePos;
+				this.currentSegment.handleIn = handlePos.normalize(-this.originalHandleIn.length);
+			} else {
+				var handlePos = this.originalHandleIn.add(delta);
+				if (event.modifiers.shift)
+					handlePos = snapDeltaToAngle(handlePos, Math.PI*2/8);
+				this.currentSegment.handleIn = handlePos;
+				this.currentSegment.handleOut = handlePos.normalize(-this.originalHandleOut.length);
+			}
+		}
+
 	},
 	mousemove: function(event) {
 		this.hitTest(event);
@@ -1387,9 +1585,20 @@ toolStack.stack = [
 ];
 toolStack.hotTool = null;
 toolStack.activeTool = null;
-toolStack.setToolMode = function(mode) {
+toolStack.command = function(cb) {
+	if (this.activeTool != null)
+		return;
+/*	if (this.hotTool) {
+		this.hotTool.fire('deactivate');
+		this.hotTool = null;
+	}*/
+	if (cb) cb();
 	var event = new paper.Event();
+	this.testHot('command', event);
+};
+toolStack.setToolMode = function(mode) {
 	this.mode = mode;
+	var event = new paper.Event();
 	this.testHot('mode', event);
 };
 toolStack.testHot = function(type, event) {
@@ -1496,12 +1705,16 @@ $(document).ready(function() {
 	});
 
 	$("#undo").click(function() {
-		if (undo.canUndo())
-			undo.undo();
+		toolStack.command(function() {
+			if (undo.canUndo())
+				undo.undo();
+		});
 	});
 	$("#redo").click(function() {
-		if (undo.canRedo())
-			undo.redo();
+		toolStack.command(function() {
+			if (undo.canRedo())
+				undo.redo();
+		});
 	});
 
 	toolStack.activate();
