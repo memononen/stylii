@@ -341,6 +341,7 @@ function findItemById(id) {
 }
 
 
+var clipboard = null;
 
 var selectionBounds = null;
 var selectionBoundsShape = null;
@@ -386,6 +387,87 @@ function updateSelectionState() {
 //		rect.transformContent = false;
 		selectionBoundsShape = rect;
 	}
+	updateSelectionUI();
+}
+
+function updateSelectionUI() {
+	if (selectionBounds == null) {
+		$("#cut").addClass("disabled");
+		$("#copy").addClass("disabled");
+		$("#delete").addClass("disabled");
+	} else {
+		$("#cut").removeClass("disabled");
+		$("#copy").removeClass("disabled");
+		$("#delete").removeClass("disabled");
+	}
+
+	if (clipboard == null) {
+		$("#paste").addClass("disabled");
+	} else {
+		$("#paste").removeClass("disabled");
+	}
+}
+
+function cutSelection() {
+	clipboard = captureSelectionState();
+	var selected = paper.project.selectedItems;
+	for (var i = 0; i < selected.length; i++) {
+		selected[i].remove();
+	}
+	undo.snapshot("Cut");
+}
+
+function copySelection() {
+	clipboard = captureSelectionState();
+	updateSelectionState();
+}
+
+function pasteSelection() {
+	if (clipboard == null)
+		return;
+
+	deselectAll();
+
+	var items = [];
+	for (var key in clipboard) {
+		var json = clipboard[key];
+		var item = Base.importJSON(json);
+		if (item) {
+			item.selected = true;
+			items.push(item);
+		}
+	}
+
+	// Center pasted items to center of the view
+	var bounds = null;
+	for (var i = 0; i < items.length; i++) {
+		if (bounds == null)
+			bounds = items[i].bounds.clone();
+		else
+			bounds = bounds.unite(items[i].bounds);
+	}
+	if (bounds) {
+		var delta = paper.view.center.subtract(bounds.center);
+		for (var i = 0; i < items.length; i++) {
+			items[i].position = items[i].position.add(delta);
+		}
+	}
+
+	undo.snapshot("Paste");
+
+	updateSelectionState();
+	paper.project.view.update();
+}
+
+function deleteSelection() {
+	var selected = paper.project.selectedItems;
+	for (var i = 0; i < selected.length; i++) {
+		selected[i].remove();
+	}
+	undo.snapshot("Delete");
+
+	updateSelectionState();
+	paper.project.view.update();
 }
 
 function captureSelectionState() {
@@ -1715,6 +1797,20 @@ $(document).ready(function() {
 			if (undo.canRedo())
 				undo.redo();
 		});
+	});
+
+	$("#cut").click(function() {
+		cutSelection();
+	});
+	$("#copy").click(function() {
+		copySelection();
+	});
+	$("#paste").click(function() {
+		pasteSelection();
+	});
+
+	$("#delete").click(function() {
+		deleteSelection();
 	});
 
 	toolStack.activate();

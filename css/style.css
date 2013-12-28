@@ -30,6 +30,7 @@ body {
 	padding: 2px 6px;
 	text-decoration: none;
 	color: #000;
+	cursor: default;
 }
 
 #menu a.disabled {
@@ -188,7 +189,6 @@ body {
 .cursor-rotate-315 {
 	cursor: url('../img/cursor-rotate-315.png') 9 9, default;
 }
-
 
 
 #canvas {
