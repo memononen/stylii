@@ -16,12 +16,198 @@ var Base = paper.Base,
 	Size = paper.Size;
 
 
+function Undo(maxUndos) {
+	this.states = [];
+	this.head = -1;
+	this.maxUndos = maxUndos || 10;
+	this.updateUI();
+}
+
+Undo.prototype.snapshot = function(name) {
+
+//	console.log("snapshot() layers: "+paper.project.layers);
+
+	// Update previous state's selection to the selection as of now
+	// so that undo feels more natural after undo. Omitting this
+	// makes the undo feel like it lost your selection.
+	if (this.head >= 0 && this.head < this.states.length)
+		this.states[this.head].selection = this.snapshotSelection();
+
+	// HACK: Store original ID into the data of an item.
+	this.captureIDs();
+
+	var state = {
+		name: name,
+		stamp: Date.now(),
+		json: this.snapshotProject(),
+		selection: this.snapshotSelection()
+	};
+
+	// Group similar actions done close to each other.
+/*	if (this.states.length > 0 && this.head == (this.states.length-1)) {
+		var last = this.states[this.states.length-1];
+		if (last.name == state.name && (state.stamp - last.stamp) < 5000) {
+			last.json = state.json;
+			last.selection = state.selection;
+			return;
+		}
+	}*/
+
+	// Discard states after the current one.
+	if (this.head < this.states.length-1)
+		this.states = this.states.slice(0, this.head+1);
+
+	this.states.push(state);
+
+	// Remove the oldest state if we have too many states.
+	if (this.states.length > this.maxUndos)
+		this.states.shift();
+
+	this.head = this.states.length-1;
+
+	this.updateUI();
+}
+
+Undo.prototype.restoreIDs = function() {
+	var maxId = 0;
+	function visitItem(item) {
+		if (item.data.id) {
+			item._id = item.data.id;
+			if (item.id > maxId)
+				maxId = item.id;
+		}
+		if (item.children) {
+			for (var j = item.children.length-1; j >= 0; j--)
+				visitItem(item.children[j]);
+		}
+	}
+	for (var i = 0, l = paper.project.layers.length; i < l; i++) {
+		var layer = paper.project.layers[i];
+		visitItem(layer);
+	}
+	if (maxId > Item._id)
+		Item._id = maxId;
+}
+
+Undo.prototype.captureIDs = function() {
+	function visitItem(item) {
+		item.data.id = item.id;
+		if (item.children) {
+			for (var j = item.children.length-1; j >= 0; j--)
+				visitItem(item.children[j]);
+		}
+	}
+	for (var i = 0, l = paper.project.layers.length; i < l; i++) {
+		var layer = paper.project.layers[i];
+		visitItem(layer);
+	}
+}
+
+Undo.prototype.snapshotProject = function() {
+	var json = Base.serialize(paper.project); //paper.project.exportJSON();
+	// TODO: Remove objects marked as guides.
+	return json;
+}
+
+Undo.prototype.snapshotSelection = function() {
+	var selection = [];
+	var selected = paper.project.selectedItems;
+	for (var i = 0; i < selected.length; i++) {
+		var item = selected[i];
+		if (item.guide) continue;
+		var state = {id: item.id, segs: []};
+		if (item instanceof Path) {
+			var segs = [];
+			for (var j = 0; j < item.segments.length; j++) {
+				if (item.segments[j].selected)
+					segs.push(item.segments[j].index);
+			}
+			if (segs.length > 0) {
+				state.segs = segs;
+			}
+		}
+		selection.push(state);
+	}
+	return selection;
+}
+
+Undo.prototype.restoreSelection = function(sel) {
+	paper.project.deselectAll();
+	// HACK: some logic in Paper.js prevents deselectAll in some cases.
+	paper.project._selectedItems = {};
+
+	for (var i = 0; i < sel.length; i++) {
+		var state = sel[i];
+		var item = findItemById(state.id);
+		if (item == null) {
+			console.log("restoreSelection: could not find "+state.id);
+			continue;
+		}
+		item.selected = true;
+		for (var j = 0; j < state.segs.length; j++) {
+			var idx = state.segs[j];
+			if (idx >= 0 && idx < item.segments.length)
+				item.segments[idx].selected = true;
+		}
+	}
+}
+
+Undo.prototype.undo = function() {
+	if (this.head > 0) {
+		this.head--;
+		this.restore(this.states[this.head]);
+	}
+	this.updateUI();
+}
+
+Undo.prototype.redo = function() {
+	if (this.head < this.states.length-1) {
+		this.head++;
+		this.restore(this.states[this.head]);
+	}
+	this.updateUI();
+}
+
+Undo.prototype.restore = function(state) {
+	paper.project.clear();
+	paper.project.importJSON(state.json);
+	this.restoreIDs();
+
+	this.restoreSelection(state.selection);
+
+	updateSelectionState();
+
+	paper.project.view.update();
+}
+
+Undo.prototype.canUndo = function() {
+	return this.head > 0;
+}
+
+Undo.prototype.canRedo = function() {
+	return this.head < this.states.length-1;
+}
+
+Undo.prototype.updateUI = function() {
+	if (this.canUndo())
+		$("#undo").removeClass("disabled");
+	else
+		$("#undo").addClass("disabled");
+
+	if (this.canRedo())
+		$("#redo").removeClass("disabled");
+	else
+		$("#redo").addClass("disabled");
+}
+
+var undo = null;
+
+
 function setCanvasCursor(name) {
 	$("#canvas").removeClass (function (index, css) {
 	    return (css.match (/\bcursor-\S+/g) || []).join(' ');
 	}).addClass(name);
 }
-
 
 function snapDeltaToAngle(delta, snapAngle) {
 	var angle = Math.atan2(delta.y, delta.x);
@@ -130,6 +316,31 @@ function dragRect(p1, p2) {
 	return rect;
 }
 
+function findItemById(id) {
+
+	function findItem(item) {
+		if (item.id == id)
+			return item;
+		if (item.children) {
+			for (var j = item.children.length-1; j >= 0; j--) {
+				var it = findItem(item.children[j]);
+				if (it != null)
+					return it;
+			}
+		}
+		return null;
+	}
+
+	for (var i = 0, l = paper.project.layers.length; i < l; i++) {
+		var layer = paper.project.layers[i];
+		var it = findItem(layer);
+		if (it != null)
+			return it;
+	}
+	return null;
+}
+
+
 
 var selectionBounds = null;
 var selectionBoundsShape = null;
@@ -180,11 +391,13 @@ function updateSelectionState() {
 function captureSelectionState() {
 	var originalContent = {};
 	var selected = paper.project.selectedItems;
+//	console.log("capture:")
 	for (var i = 0; i < selected.length; i++) {
 		var item = selected[i];
 		if (item.guide) continue;
 //		this.scale.originalContent[item.id] = item.exportJSON();
 		originalContent[item.id] = Base.serialize(item);
+//		console.log(" - "+item.id+" json:"+originalContent[item.id]);
 		// Store segment selection
 		if (item instanceof Path) {
 			var segs = [];
@@ -202,12 +415,14 @@ function captureSelectionState() {
 
 function restoreSelectionState(originalContent) {
 	var selected = paper.project.selectedItems;
+//	console.log("restore:")
 	for (var i = 0; i < selected.length; i++) {
 		var item = selected[i];
 		if (item.guide) continue;
 		if (originalContent.hasOwnProperty(item.id)) {
 			var id = item.id;
 			var json = originalContent[item.id];
+//			console.log(" - "+id+" json:"+json);
 			item.importJSON(json);
 			item._id = id;
 		}
@@ -225,6 +440,10 @@ function restoreSelectionState(originalContent) {
 		}
 
 	}
+}
+
+function deselectAll() {
+	paper.project.deselectAll();
 }
 
 function deselectAllPoints() {
@@ -318,7 +537,7 @@ toolSelect.mouseStartPos = new Point();
 toolSelect.mode = null;
 toolSelect.hitItem = null;
 toolSelect.originalContent = null;
-
+toolSelect.changed = false;
 toolSelect.resetHot = function(type, event, mode) {
 };
 toolSelect.testHot = function(type, event, mode) {
@@ -326,8 +545,6 @@ toolSelect.testHot = function(type, event, mode) {
 		return;
 	return this.hitTest(event);
 };
-
-
 toolSelect.hitTest = function(event) {
 	var hitSize = 4.0 / paper.view.zoom;
 
@@ -361,6 +578,7 @@ toolSelect.on({
 	},
 	mousedown: function(event) {
 		this.mode = null;
+		this.changed = false;
 
 		if (this.hitItem) {
 			if (this.hitItem.type == 'fill' || this.hitItem.type == 'stroke') {
@@ -368,7 +586,7 @@ toolSelect.on({
 					this.hitItem.item.selected = !this.hitItem.item.selected;
 				} else {
 					if (!this.hitItem.item.selected)
-						paper.project.activeLayer.selected = false;
+						deselectAll();
 					this.hitItem.item.selected = true;
 				}
 				if (this.hitItem.item.selected) {
@@ -386,11 +604,16 @@ toolSelect.on({
 		}
 	},
 	mouseup: function(event) {
-		if (this.mode == 'box-select') {
+		if (this.mode == 'move-shapes') {
+			if (this.changed) {
+				clearSelectionBounds();
+				undo.snapshot("Move Shapes");
+			}
+		} else if (this.mode == 'box-select') {
 			var box = new Rectangle(this.mouseStartPos, event.point);
 
 			if (!event.modifiers.shift)
-				paper.project.activeLayer.selected = false;
+				deselectAll();
 
 			var selectedPaths = getPathsIntersectingRect(box);
 			for (var i = 0; i < selectedPaths.length; i++)
@@ -409,6 +632,9 @@ toolSelect.on({
 	},
 	mousedrag: function(event) {
 		if (this.mode == 'move-shapes') {
+
+			this.changed = true;
+
 			setCanvasCursor('cursor-arrow-small');
 
 			var delta = event.point.subtract(this.mouseStartPos);
@@ -439,6 +665,7 @@ toolDirectSelect.mode = null;
 toolDirectSelect.hitItem = null;
 toolDirectSelect.originalContent = null;
 toolDirectSelect.originalHandlePos = null;
+toolDirectSelect.changed = false;
 
 toolDirectSelect.resetHot = function(type, event, mode) {
 };
@@ -497,6 +724,7 @@ toolDirectSelect.on({
 	},
 	mousedown: function(event) {
 		this.mode = null;
+		this.changed = false;
 
 		if (this.hitItem) {
 			if (this.hitItem.type == 'fill' || this.hitItem.type == 'stroke') {
@@ -504,7 +732,7 @@ toolDirectSelect.on({
 					this.hitItem.item.selected = !this.hitItem.item.selected;
 				} else {
 					if (!this.hitItem.item.selected)
-						paper.project.activeLayer.selected = false;
+						deselectAll();
 					this.hitItem.item.selected = true;
 				}
 				if (this.hitItem.item.selected) {
@@ -543,11 +771,26 @@ toolDirectSelect.on({
 		}
 	},
 	mouseup: function(event) {
-		if (this.mode == 'box-select') {
+		if (this.mode == 'move-shapes') {
+			if (this.changed) {
+				clearSelectionBounds();
+				undo.snapshot("Move Shapes");
+			}
+		} else if (this.mode == 'move-points') {
+			if (this.changed) {
+				clearSelectionBounds();
+				undo.snapshot("Move Points");
+			}
+		} else if (this.mode == 'move-handle') {
+			if (this.changed) {
+				clearSelectionBounds();
+				undo.snapshot("Move Handle");
+			}
+		} else if (this.mode == 'box-select') {
 			var box = new Rectangle(this.mouseStartPos, event.point);
 
 			if (!event.modifiers.shift)
-				paper.project.activeLayer.selected = false;
+				deselectAll();
 
 			var selectedSegments = getSegmentsInRect(box);
 			if (selectedSegments.length > 0) {
@@ -572,6 +815,7 @@ toolDirectSelect.on({
 		}
 	},
 	mousedrag: function(event) {
+		this.changed = true;
 		if (this.mode == 'move-shapes') {
 			setCanvasCursor('cursor-arrow-small');
 
@@ -646,6 +890,7 @@ toolScale.corner = null;
 toolScale.originalCenter = null;
 toolScale.originalSize = null;
 toolScale.originalContent = null;
+toolScale.changed = false;
 
 toolScale.resetHot = function(type, event, mode) {
 };
@@ -694,6 +939,7 @@ toolScale.on({
 	},
 	mousedown: function(event) {
 		this.mode = null;
+		this.changed = false;
 		if (this.hitItem) {
 			if (this.hitItem.type == 'bounds') {
 				this.originalContent = captureSelectionState();
@@ -709,6 +955,12 @@ toolScale.on({
 		}
 	},
 	mouseup: function(event) {
+		if (this.mode == 'scale') {
+			if (this.changed) {
+				clearSelectionBounds();
+				undo.snapshot("Scale Shapes");
+			}
+		}
 	},
 	mousedrag: function(event) {
 		if (this.mode == 'scale') {
@@ -745,6 +997,7 @@ toolScale.on({
 				item.scale(sx, sy, pivot);
 			}
 			updateSelectionState();
+			this.changed = true;
 		}
 	},
 	mousemove: function(event) {
@@ -762,6 +1015,7 @@ toolRotate.originalAngle = 0;
 toolRotate.originalContent = null;
 toolRotate.originalShape = null;
 toolRotate.cursorDir = null;
+toolRotate.changed = false;
 
 
 toolRotate.resetHot = function(type, event, mode) {
@@ -814,6 +1068,7 @@ toolRotate.on({
 	},
 	mousedown: function(event) {
 		this.mode = null;
+		this.changed = false;
 		if (this.hitItem) {
 			if (this.hitItem.type == 'bounds') {
 				this.originalContent = captureSelectionState();
@@ -831,6 +1086,12 @@ toolRotate.on({
 		}
 	},
 	mouseup: function(event) {
+		if (this.mode == 'rotate') {
+			if (this.changed) {
+				clearSelectionBounds();
+				undo.snapshot("Rotate Shapes");
+			}
+		}
 		updateSelectionState();
 	},
 	mousedrag: function(event) {
@@ -863,6 +1124,7 @@ toolRotate.on({
 			}
 
 			setCanvasRotateCursor(toolRotate.cursorDir, da);
+			this.changed = true;
 		}
 	},
 	mousemove: function(event) {
@@ -1069,7 +1331,7 @@ toolPen.on({
 
 		if (this.mode == 'add') {
 			if (!this.path) {
-				paper.project.activeLayer.selected = false;
+				deselectAll();
 				this.path = new Path();
 				this.path.strokeColor = 'black';
 			}
@@ -1204,10 +1466,21 @@ $(document).ready(function() {
 	var $canvas = $('#canvas');
 	paper.setup($canvas[0]);
 
+	// HACK: Do not select the children of layers, or else
+	// the layers of selected objects will become selected
+	// after importJSON(). 
+	Layer.inject({ 
+		_selectChildren: false 
+	});
+
+	undo = new Undo(20);
+
 	var path1 = new Path.Circle(new Point(180, 50), 30);
 	path1.strokeColor = 'black';
 	var path2 = new Path.Circle(new Point(180, 150), 20);
 	path2.fillColor = 'grey';
+
+	undo.snapshot("Init");
 
 	$("#tool-select").click(function() {
 		toolStack.setToolMode('tool-select');
@@ -1220,6 +1493,15 @@ $(document).ready(function() {
 	});
 	$("#tool-zoompan").click(function() {
 		toolStack.setToolMode('tool-zoompan');
+	});
+
+	$("#undo").click(function() {
+		if (undo.canUndo())
+			undo.undo();
+	});
+	$("#redo").click(function() {
+		if (undo.canRedo())
+			undo.redo();
 	});
 
 	toolStack.activate();
