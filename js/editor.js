@@ -620,6 +620,25 @@ toolSelect.mode = null;
 toolSelect.hitItem = null;
 toolSelect.originalContent = null;
 toolSelect.changed = false;
+toolSelect.duplicates = null;
+
+toolSelect.createDuplicates = function(content) {
+	this.duplicates = [];
+	for (var key in content) {
+		var json = content[key];
+		var item = Base.importJSON(json);
+		if (item) {
+			item.selected = false;
+			this.duplicates.push(item);
+		}
+	}
+};
+toolSelect.removeDuplicates = function() {
+	for (var i = 0; i < this.duplicates.length; i++)
+		this.duplicates[i].remove();
+	this.duplicates = null;
+};
+
 toolSelect.resetHot = function(type, event, mode) {
 };
 toolSelect.testHot = function(type, event, mode) {
@@ -629,9 +648,11 @@ toolSelect.testHot = function(type, event, mode) {
 };
 toolSelect.hitTest = function(event) {
 	var hitSize = 4.0; // / paper.view.zoom;
+	this.hitItem = null;
 
 	// Hit test items.
-	this.hitItem = paper.project.hitTest(event.point, { fill:true, stroke:true, tolerance: hitSize });
+	if (event.point)
+		this.hitItem = paper.project.hitTest(event.point, { fill:true, stroke:true, tolerance: hitSize });
 
 	if (this.hitItem) {
 		if (this.hitItem.type == 'fill' || this.hitItem.type == 'stroke') {
@@ -691,6 +712,7 @@ toolSelect.on({
 				clearSelectionBounds();
 				undo.snapshot("Move Shapes");
 			}
+			this.duplicates = null;
 		} else if (this.mode == 'box-select') {
 			var box = new Rectangle(this.mouseStartPos, event.point);
 
@@ -717,7 +739,15 @@ toolSelect.on({
 
 			this.changed = true;
 
-			setCanvasCursor('cursor-arrow-small');
+			if (event.modifiers.option) {
+				if (this.duplicates == null)
+					this.createDuplicates(this.originalContent);
+				setCanvasCursor('cursor-arrow-duplicate');
+			} else {
+				if (this.duplicates)
+					this.removeDuplicates();
+				setCanvasCursor('cursor-arrow-small');
+			}
 
 			var delta = event.point.subtract(this.mouseStartPos);
 			if (event.modifiers.shift) {
@@ -760,20 +790,25 @@ toolDirectSelect.testHot = function(type, event, mode) {
 
 toolDirectSelect.hitTest = function(event) {
 	var hitSize = 4.0; // / paper.view.zoom;
+	var hit = null;
+	this.hitItem = null;
 
 	// Hit test items.
-	this.hitItem = paper.project.hitTest(event.point, { fill:true, stroke:true, tolerance: hitSize });
+	if (event.point)
+		this.hitItem = paper.project.hitTest(event.point, { fill:true, stroke:true, tolerance: hitSize });
 
 	// Hit test selected handles
-	var hit = paper.project.hitTest(event.point, { selected: true, handles: true, tolerance: hitSize });
-	if (hit) {
+	hit = null;
+	if (event.point)
+		hit = paper.project.hitTest(event.point, { selected: true, handles: true, tolerance: hitSize });
+	if (hit)
 		this.hitItem = hit;
-	}
 	// Hit test points
-	var hit = paper.project.hitTest(event.point, { segments: true, tolerance: hitSize });
-	if (hit) {
+	hit = null;
+	if (event.point)
+		hit = paper.project.hitTest(event.point, { segments: true, tolerance: hitSize });
+	if (hit)
 		this.hitItem = hit;
-	}
 
 	if (this.hitItem) {
 		if (this.hitItem.type == 'fill' || this.hitItem.type == 'stroke') {
@@ -989,7 +1024,6 @@ toolScale.testHot = function(type, event, mode) {
 
 toolScale.hitTest = function(event) {
 	var hitSize = 6.0; // / paper.view.zoom;
-
 	this.hitItem = null;
 
 	if (!selectionBoundsShape || !selectionBounds)
@@ -999,7 +1033,8 @@ toolScale.hitTest = function(event) {
 		return;
 
 	// Hit test selection rectangle
-	this.hitItem = selectionBoundsShape.hitTest(event.point, { bounds: true, guides: true, tolerance: hitSize });
+	if (event.point)
+		this.hitItem = selectionBoundsShape.hitTest(event.point, { bounds: true, guides: true, tolerance: hitSize });
 
 	if (this.hitItem && this.hitItem.type == 'bounds') {
 		// Normalize the direction so that corners are at 45° angles.
@@ -1115,7 +1150,6 @@ toolRotate.testHot = function(type, event, mode) {
 
 toolRotate.hitTest = function(event) {
 	var hitSize = 12.0; // / paper.view.zoom;
-
 	this.hitItem = null;
 
 	if (!selectionBoundsShape || !selectionBounds)
@@ -1126,7 +1160,7 @@ toolRotate.hitTest = function(event) {
 
 	// Hit test selection rectangle
 	this.hitItem = null;
-	if (!selectionBounds.contains(event.point))
+	if (event.point && !selectionBounds.contains(event.point))
 		this.hitItem = selectionBoundsShape.hitTest(event.point, { bounds: true, guides: true, tolerance: hitSize });
 
 	if (this.hitItem && this.hitItem.type == 'bounds') {
@@ -1372,12 +1406,12 @@ toolPen.testHot = function(type, event, mode) {
 toolPen.hitTest = function(event, type) {
 	var hitSize = 4.0; // / paper.view.zoom;
 	var result = null;
-	var isKeyEvent = type == 'mode' || type == 'command' || type == 'keydown' || type == 'keyup';
+//	var isKeyEvent = type == 'mode' || type == 'command' || type == 'keydown' || type == 'keyup';
 
 	this.currentSegment = null;
 	this.hitResult = null;
 
-	if (!isKeyEvent)
+	if (event.point)
 		result = paper.project.hitTest(event.point, { segments: true, stroke: true, tolerance: hitSize });
 
 	if (result) {
@@ -1430,7 +1464,7 @@ toolPen.hitTest = function(event, type) {
 	if (!result) {
 		this.mode = 'create';
 		setCanvasCursor('cursor-pen-create');
-		if (!isKeyEvent)
+		if (event.point)
 			this.updateTail(event.point);
 	}
 
@@ -1667,6 +1701,7 @@ toolStack.stack = [
 ];
 toolStack.hotTool = null;
 toolStack.activeTool = null;
+toolStack.lastPoint = new Point();
 toolStack.command = function(cb) {
 	if (this.activeTool != null)
 		return;
@@ -1676,11 +1711,13 @@ toolStack.command = function(cb) {
 	}*/
 	if (cb) cb();
 	var event = new paper.Event();
+	event.point = this.lastPoint.clone();
 	this.testHot('command', event);
 };
 toolStack.setToolMode = function(mode) {
 	this.mode = mode;
 	var event = new paper.Event();
+	event.point = this.lastPoint.clone();
 	this.testHot('mode', event);
 };
 toolStack.testHot = function(type, event) {
@@ -1715,6 +1752,7 @@ toolStack.on({
 	},
 
 	mousedown: function(event) {
+		this.lastPoint = event.point.clone();
 		if (this.hotTool) {
 			this.activeTool = this.hotTool;
 			this.activeTool.fire('mousedown', event);
@@ -1722,6 +1760,7 @@ toolStack.on({
 	},
 
 	mouseup: function(event) {
+		this.lastPoint = event.point.clone();
 		if (this.activeTool)
 			this.activeTool.fire('mouseup', event);
 		this.activeTool = null;
@@ -1729,15 +1768,18 @@ toolStack.on({
 	},
 
 	mousedrag: function(event) {
+		this.lastPoint = event.point.clone();
 		if (this.activeTool)
 			this.activeTool.fire('mousedrag', event);
 	},
 
 	mousemove: function(event) {
+		this.lastPoint = event.point.clone();
 		this.testHot('mousemove', event);
 	},
 
 	keydown: function(event) {
+		event.point = this.lastPoint.clone();
 		if (this.activeTool)
 			this.activeTool.fire('keydown', event);
 		else
@@ -1745,6 +1787,7 @@ toolStack.on({
 	},
 
 	keyup: function(event) {
+		event.point = this.lastPoint.clone();
 		if (this.activeTool)
 			this.activeTool.fire('keyup', event);
 		else

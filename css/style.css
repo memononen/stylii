@@ -10,9 +10,8 @@ body {
 	left: 40px;
 	top: 50px;
 	width: 28px;
-	padding: 2px;
+	padding: 0;
 	background: #fff;
-	border-radius: 2px;
 	background: rgba(255,255,255,0.8);
 	margin: 0;
 	box-shadow: 0px 3px 6px rgba(0,0,0,0.4);
@@ -148,6 +147,10 @@ body {
 
 .cursor-arrow-small-point {
 	cursor: url('../img/cursor-arrow-small-point.png') 2 2, default;
+}
+
+.cursor-arrow-duplicate {
+	cursor: url('../img/cursor-arrow-duplicate.png') 2 2, default;
 }
 
 .cursor-scale-0 {
