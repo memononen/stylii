@@ -1,20 +1,3 @@
-var Base = paper.Base,
-	PaperScope = paper.PaperScope,
-	Item = paper.Item,
-	Path = paper.Path,
-	PathItem = paper.PathItem,
-	CompoundPath = paper.CompoundPath,
-	Group = paper.Group,
-	Layer = paper.Layer,
-	Segment = paper.Segment,
-	Raster = paper.Raster,
-	Tool = paper.Tool,
-	Component = paper.Component,
-	Point = paper.Point,
-	Rectangle = paper.Rectangle,
-	Matrix = paper.Matrix,
-	Size = paper.Size;
-
 
 function Undo(maxUndos) {
 	this.states = [];
@@ -69,6 +52,7 @@ Undo.prototype.snapshot = function(name) {
 }
 
 Undo.prototype.restoreIDs = function() {
+	// Restore IDs from the 'data'.
 	var maxId = 0;
 	function visitItem(item) {
 		if (item.data.id) {
@@ -90,6 +74,7 @@ Undo.prototype.restoreIDs = function() {
 }
 
 Undo.prototype.captureIDs = function() {
+	// Store IDs of the items into 'data' so that they get serialized.
 	function visitItem(item) {
 		item.data.id = item.id;
 		if (item.children) {
@@ -104,7 +89,7 @@ Undo.prototype.captureIDs = function() {
 }
 
 Undo.prototype.snapshotProject = function() {
-	var json = Base.serialize(paper.project); //paper.project.exportJSON();
+	var json = paper.Base.serialize(paper.project); //paper.project.exportJSON();
 	// TODO: Remove objects marked as guides.
 	return json;
 }
@@ -116,7 +101,7 @@ Undo.prototype.snapshotSelection = function() {
 		var item = selected[i];
 		if (item.guide) continue;
 		var state = {id: item.id, segs: []};
-		if (item instanceof Path) {
+		if (item instanceof paper.Path) {
 			var segs = [];
 			for (var j = 0; j < item.segments.length; j++) {
 				if (item.segments[j].selected)
@@ -133,7 +118,8 @@ Undo.prototype.snapshotSelection = function() {
 
 Undo.prototype.restoreSelection = function(sel) {
 	paper.project.deselectAll();
-	// HACK: some logic in Paper.js prevents deselectAll in some cases.
+	// HACK: some logic in Paper.js prevents deselectAll in some cases,
+	// enforce deselect.
 	paper.project._selectedItems = {};
 
 	for (var i = 0; i < sel.length; i++) {
@@ -152,6 +138,22 @@ Undo.prototype.restoreSelection = function(sel) {
 	}
 }
 
+Undo.prototype.restore = function(state) {
+	// Empty the project and deserialize the project from JSON.
+	paper.project.clear();
+	paper.project.importJSON(state.json);
+	// HACK: paper does not retain IDs, we capture them on snapshot,
+	// restore them here.
+	this.restoreIDs();
+
+	// Selection is serialized separately, restore now (requires correct IDs).
+	this.restoreSelection(state.selection);
+
+	// Update UI
+	updateSelectionState();
+	paper.project.view.update();
+}
+
 Undo.prototype.undo = function() {
 	if (this.head > 0) {
 		this.head--;
@@ -166,18 +168,6 @@ Undo.prototype.redo = function() {
 		this.restore(this.states[this.head]);
 	}
 	this.updateUI();
-}
-
-Undo.prototype.restore = function(state) {
-	paper.project.clear();
-	paper.project.importJSON(state.json);
-	this.restoreIDs();
-
-	this.restoreSelection(state.selection);
-
-	updateSelectionState();
-
-	paper.project.view.update();
 }
 
 Undo.prototype.canUndo = function() {
@@ -215,7 +205,7 @@ function snapDeltaToAngle(delta, snapAngle) {
 	var dirx = Math.cos(angle);
 	var diry = Math.sin(angle);
 	var d = dirx*delta.x + diry*delta.y;
-	return new Point(dirx*d, diry*d);
+	return new paper.Point(dirx*d, diry*d);
 }
 
 function indexFromAngle(angle) {
@@ -238,19 +228,6 @@ var oppositeCorner = {
 
 function setCanvasRotateCursor(dir, da) {
 	// zero is up, counter clockwise
-/*	var angles = {
-		'top-left': 315,
-		'top-center': 0,
-		'top-right': 45,
-		'right-center': 90,
-		'bottom-right': 135,
-		'bottom-center': 180,
-		'bottom-left': 225,
-		'left-center': 270,
-	};*/
-//	console.log("corner="+corner);
-//	var angle = angles[corner] || 0;
-// angle *= Math.PI/180;
 	var angle = Math.atan2(dir.x, -dir.y) + da;
 	var index = indexFromAngle(angle);
 	var cursors = [
@@ -268,19 +245,6 @@ function setCanvasRotateCursor(dir, da) {
 
 function setCanvasScaleCursor(dir) {
 	// zero is up, counter clockwise
-/*	var angles = {
-		'top-left': 315,
-		'top-center': 0,
-		'top-right': 45,
-		'right-center': 90,
-		'bottom-right': 135,
-		'bottom-center': 180,
-		'bottom-left': 225,
-		'left-center': 270,
-	};*/
-//	console.log("corner="+corner);
-//	var angle = angles[corner] || 0;
-// angle *= Math.PI/180;
 	var angle = Math.atan2(dir.x, -dir.y);
 	var index = indexFromAngle(angle);
 	var cursors = [
@@ -294,15 +258,15 @@ function setCanvasScaleCursor(dir) {
 
 function dragRect(p1, p2) {
 	// Create pixel perfect dotted rectable for drag selections.
-	var half = new Point(0.5 / paper.view.zoom, 0.5 / paper.view.zoom);
+	var half = new paper.Point(0.5 / paper.view.zoom, 0.5 / paper.view.zoom);
 	var start = p1.add(half);
 	var end = p2.add(half);
-	var rect = new CompoundPath();
+	var rect = new paper.CompoundPath();
 	rect.moveTo(start);
-	rect.lineTo(new Point(start.x, end.y));
+	rect.lineTo(new paper.Point(start.x, end.y));
 	rect.lineTo(end);
 	rect.moveTo(start);
-	rect.lineTo(new Point(end.x, start.y));
+	rect.lineTo(new paper.Point(end.x, start.y));
 	rect.lineTo(end);
 	rect.strokeColor = 'black';
 	rect.strokeWidth = 1.0 / paper.view.zoom;
@@ -375,7 +339,7 @@ function updateSelectionState() {
 	clearSelectionBounds();
 	selectionBounds = getSelectionBounds();
 	if (selectionBounds != null) {
-		var rect =  new Path.Rectangle(selectionBounds);
+		var rect =  new paper.Path.Rectangle(selectionBounds);
 		//var color = paper.project.activeLayer.getSelectedColor();
 		rect.strokeColor = 'rgba(0,0,0,0)'; //color ? color : '#009dec';
 		rect.strokeWidth = 1.0 / paper.view.zoom;
@@ -431,7 +395,7 @@ function pasteSelection() {
 	var items = [];
 	for (var key in clipboard) {
 		var json = clipboard[key];
-		var item = Base.importJSON(json);
+		var item = paper.Base.importJSON(json);
 		if (item) {
 			item.selected = true;
 			items.push(item);
@@ -470,18 +434,17 @@ function deleteSelection() {
 	paper.project.view.update();
 }
 
+// Returns serialized contents of selected items. 
 function captureSelectionState() {
 	var originalContent = {};
 	var selected = paper.project.selectedItems;
-//	console.log("capture:")
 	for (var i = 0; i < selected.length; i++) {
 		var item = selected[i];
 		if (item.guide) continue;
 //		this.scale.originalContent[item.id] = item.exportJSON();
-		originalContent[item.id] = Base.serialize(item);
-//		console.log(" - "+item.id+" json:"+originalContent[item.id]);
+		originalContent[item.id] = paper.Base.serialize(item);
 		// Store segment selection
-		if (item instanceof Path) {
+		if (item instanceof paper.Path) {
 			var segs = [];
 			for (var j = 0; j < item.segments.length; j++) {
 				if (item.segments[j].selected)
@@ -495,21 +458,23 @@ function captureSelectionState() {
 	return originalContent;
 }
 
+// Restore the state of selected items.
 function restoreSelectionState(originalContent) {
+	// TODO: could use findItemById() instead.
 	var selected = paper.project.selectedItems;
-//	console.log("restore:")
 	for (var i = 0; i < selected.length; i++) {
 		var item = selected[i];
 		if (item.guide) continue;
 		if (originalContent.hasOwnProperty(item.id)) {
+			// HACK: paper does not retain item IDs after importJSON,
+			// store the ID here, and restore after deserialization.
 			var id = item.id;
 			var json = originalContent[item.id];
-//			console.log(" - "+id+" json:"+json);
 			item.importJSON(json);
 			item._id = id;
 		}
 		// Restore segment selection
-		if (item instanceof Path) {
+		if (item instanceof paper.Path) {
 			var key = item.id+"-selected-segments";
 			if (originalContent.hasOwnProperty(key)) {
 				var segs = originalContent[key];
@@ -532,7 +497,7 @@ function deselectAllPoints() {
 	var selected = paper.project.selectedItems;
 	for (var i = 0; i < selected.length; i++) {
 		var item = selected[i];
-		if (item instanceof Path) {
+		if (item instanceof paper.Path) {
 			for (var j = 0; j < item.segments.length; j++)
 				if (item.segments[j].selected)
 					item.segments[j].selected = false;
@@ -540,6 +505,7 @@ function deselectAllPoints() {
 	}
 }
 
+// Returns path points which are contained in the rect. 
 function getSegmentsInRect(rect) {
 	var segments = [];
 
@@ -549,7 +515,7 @@ function getSegmentsInRect(rect) {
 		var children = item.children;
 		if (!rect.intersects(item.bounds))
 			return;
-		if (item instanceof Path) {
+		if (item instanceof paper.Path) {
 			for (var i = 0; i < item.segments.length; i++) {
 				if (rect.contains(item.segments[i].point))
 					segments.push(item.segments[i]);
@@ -567,9 +533,11 @@ function getSegmentsInRect(rect) {
 	return segments;
 }
 
+// Returns all items intersecting the rect.
+// Note: only the item outlines are tested.
 function getPathsIntersectingRect(rect) {
 	var paths = [];
-	var boundingRect = new Path.Rectangle(rect);
+	var boundingRect = new paper.Path.Rectangle(rect);
 
 	function checkPathItem(item) {
 		var children = item.children;
@@ -577,7 +545,7 @@ function getPathsIntersectingRect(rect) {
 			return;
 		if (!rect.intersects(item.bounds))
 			return;
-		if (item instanceof PathItem) {
+		if (item instanceof paper.PathItem) {
 			if (rect.contains(item.bounds)) {
 				paths.push(item);
 				return;
@@ -601,6 +569,7 @@ function getPathsIntersectingRect(rect) {
 	return paths;
 }
 
+// Returns bounding box of all selected items.
 function getSelectionBounds() {
 	var bounds = null;
 	var selected = paper.project.selectedItems;
@@ -614,8 +583,8 @@ function getSelectionBounds() {
 }
 
 
-var toolSelect = new Tool();
-toolSelect.mouseStartPos = new Point();
+var toolSelect = new paper.Tool();
+toolSelect.mouseStartPos = new paper.Point();
 toolSelect.mode = null;
 toolSelect.hitItem = null;
 toolSelect.originalContent = null;
@@ -626,7 +595,7 @@ toolSelect.createDuplicates = function(content) {
 	this.duplicates = [];
 	for (var key in content) {
 		var json = content[key];
-		var item = Base.importJSON(json);
+		var item = paper.Base.importJSON(json);
 		if (item) {
 			item.selected = false;
 			this.duplicates.push(item);
@@ -714,7 +683,7 @@ toolSelect.on({
 			}
 			this.duplicates = null;
 		} else if (this.mode == 'box-select') {
-			var box = new Rectangle(this.mouseStartPos, event.point);
+			var box = new paper.Rectangle(this.mouseStartPos, event.point);
 
 			if (!event.modifiers.shift)
 				deselectAll();
@@ -771,8 +740,8 @@ toolSelect.on({
 });
 
 
-var toolDirectSelect = new Tool();
-toolDirectSelect.mouseStartPos = new Point();
+var toolDirectSelect = new paper.Tool();
+toolDirectSelect.mouseStartPos = new paper.Point();
 toolDirectSelect.mode = null;
 toolDirectSelect.hitItem = null;
 toolDirectSelect.originalContent = null;
@@ -911,7 +880,7 @@ toolDirectSelect.on({
 				undo.snapshot("Move Handle");
 			}
 		} else if (this.mode == 'box-select') {
-			var box = new Rectangle(this.mouseStartPos, event.point);
+			var box = new paper.Rectangle(this.mouseStartPos, event.point);
 
 			if (!event.modifiers.shift)
 				deselectAll();
@@ -1003,8 +972,8 @@ toolDirectSelect.on({
 });
 
 
-var toolScale = new Tool();
-toolScale.mouseStartPos = new Point();
+var toolScale = new paper.Tool();
+toolScale.mouseStartPos = new paper.Point();
 toolScale.mode = null;
 toolScale.hitItem = null;
 toolScale.pivot = null;
@@ -1128,8 +1097,8 @@ toolScale.on({
 });
 
 
-var toolRotate = new Tool();
-toolRotate.mouseStartPos = new Point();
+var toolRotate = new paper.Tool();
+toolRotate.mouseStartPos = new paper.Point();
 toolRotate.mode = null;
 toolRotate.hitItem = null;
 toolRotate.originalCenter = null;
@@ -1193,7 +1162,7 @@ toolRotate.on({
 		if (this.hitItem) {
 			if (this.hitItem.type == 'bounds') {
 				this.originalContent = captureSelectionState();
-				this.originalShape = Base.serialize(selectionBoundsShape);
+				this.originalShape = paper.Base.serialize(selectionBoundsShape);
 
 				this.mode = 'rotate';
 //				var pivotName = paper.Base.camelize(oppositeCorner[this.hitItem.name]);
@@ -1254,9 +1223,9 @@ toolRotate.on({
 });
 
 
-var toolZoomPan = new Tool();
+var toolZoomPan = new paper.Tool();
 toolZoomPan.distanceThreshold = 8;
-toolZoomPan.mouseStartPos = new Point();
+toolZoomPan.mouseStartPos = new paper.Point();
 toolZoomPan.mode = 'pan';
 toolZoomPan.zoomFactor = 1.3;
 toolZoomPan.resetHot = function(type, event, mode) {
@@ -1348,7 +1317,7 @@ toolZoomPan.on({
 	}
 });
 
-var toolPen = new Tool();
+var toolPen = new paper.Tool();
 toolPen.pathId = -1;
 toolPen.hitResult = null;
 toolPen.mouseStartPos = null;
@@ -1371,7 +1340,7 @@ toolPen.updateTail = function(point) {
 		return;
 
 	var color = paper.project.activeLayer.getSelectedColor();
-	var tail = new Path();
+	var tail = new paper.Path();
 	tail.strokeColor = color ? color : '#009dec';
 	tail.strokeWidth = 1.0 / paper.view.zoom;
 	tail.guide = true;
@@ -1493,7 +1462,7 @@ toolPen.on({
 			var path = findItemById(this.pathId);
 			if (path == null) {
 				deselectAll();
-				path = new Path();
+				path = new paper.Path();
 				path.strokeColor = 'black';
 				this.pathId = path.id;
 			}
@@ -1514,9 +1483,9 @@ toolPen.on({
 				var right = parts[1];
 
 				var x = left[6], y = left[7];
-				var segment = new Segment(new Point(x, y),
-					!isLinear && new Point(left[4] - x, left[5] - y),
-					!isLinear && new Point(right[2] - x, right[3] - y));
+				var segment = new Segment(new paper.Point(x, y),
+					!isLinear && new paper.Point(left[4] - x, left[5] - y),
+					!isLinear && new paper.Point(right[2] - x, right[3] - y));
 
 				var seg = this.hitResult.item.insert(location.index + 1, segment);
 
@@ -1690,7 +1659,7 @@ toolPen.on({
 });
 
 
-var toolStack = new Tool();
+var toolStack = new paper.Tool();
 toolStack.stack = [
 	toolZoomPan,
 	toolPen,
@@ -1701,7 +1670,7 @@ toolStack.stack = [
 ];
 toolStack.hotTool = null;
 toolStack.activeTool = null;
-toolStack.lastPoint = new Point();
+toolStack.lastPoint = new paper.Point();
 toolStack.command = function(cb) {
 	if (this.activeTool != null)
 		return;
@@ -1803,15 +1772,15 @@ $(document).ready(function() {
 	// HACK: Do not select the children of layers, or else
 	// the layers of selected objects will become selected
 	// after importJSON(). 
-	Layer.inject({ 
+	paper.Layer.inject({ 
 		_selectChildren: false 
 	});
 
 	undo = new Undo(20);
 
-	var path1 = new Path.Circle(new Point(180, 50), 30);
+	var path1 = new paper.Path.Circle(new paper.Point(180, 50), 30);
 	path1.strokeColor = 'black';
-	var path2 = new Path.Circle(new Point(180, 150), 20);
+	var path2 = new paper.Path.Circle(new paper.Point(180, 150), 20);
 	path2.fillColor = 'grey';
 
 	undo.snapshot("Init");
