@@ -393,9 +393,9 @@ function pasteSelection() {
 	deselectAll();
 
 	var items = [];
-	for (var key in clipboard) {
-		var json = clipboard[key];
-		var item = paper.Base.importJSON(json);
+	for (var i = 0; i < clipboard.length; i++) {
+		var content = clipboard[i];
+		var item = paper.Base.importJSON(content.json);
 		if (item) {
 			item.selected = true;
 			items.push(item);
@@ -436,24 +436,17 @@ function deleteSelection() {
 
 // Returns serialized contents of selected items. 
 function captureSelectionState() {
-	var originalContent = {};
+	var originalContent = [];
 	var selected = paper.project.selectedItems;
 	for (var i = 0; i < selected.length; i++) {
 		var item = selected[i];
 		if (item.guide) continue;
-//		this.scale.originalContent[item.id] = item.exportJSON();
-		originalContent[item.id] = paper.Base.serialize(item);
-		// Store segment selection
-		if (item instanceof paper.Path) {
-			var segs = [];
-			for (var j = 0; j < item.segments.length; j++) {
-				if (item.segments[j].selected)
-					segs.push(item.segments[j].index);
-			}
-			if (segs.length > 0) {
-				originalContent[item.id+"-selected-segments"] = segs;
-			}
-		}
+		var orig = {
+			id: item.id,
+			json: paper.Base.serialize(item), // item.exportJSON();
+			selectedSegments: []
+		};
+		originalContent.push(orig);
 	}
 	return originalContent;
 }
@@ -461,31 +454,15 @@ function captureSelectionState() {
 // Restore the state of selected items.
 function restoreSelectionState(originalContent) {
 	// TODO: could use findItemById() instead.
-	var selected = paper.project.selectedItems;
-	for (var i = 0; i < selected.length; i++) {
-		var item = selected[i];
-		if (item.guide) continue;
-		if (originalContent.hasOwnProperty(item.id)) {
-			// HACK: paper does not retain item IDs after importJSON,
-			// store the ID here, and restore after deserialization.
-			var id = item.id;
-			var json = originalContent[item.id];
-			item.importJSON(json);
-			item._id = id;
-		}
-		// Restore segment selection
-		if (item instanceof paper.Path) {
-			var key = item.id+"-selected-segments";
-			if (originalContent.hasOwnProperty(key)) {
-				var segs = originalContent[key];
-				for (var j = 0; j < segs.length; j++) {
-					var idx = segs[j];
-					if (idx >= 0 && idx < item.segments.length)
-						item.segments[idx].selected = true;
-				}
-			}
-		}
-
+	for (var i = 0; i < originalContent.length; i++) {
+		var orig = originalContent[i];
+		var item = findItemById(orig.id);
+		if (!item) continue;
+		// HACK: paper does not retain item IDs after importJSON,
+		// store the ID here, and restore after deserialization.
+		var id = item.id;
+		item.importJSON(orig.json);
+		item._id = id;
 	}
 }
 
