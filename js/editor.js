@@ -69,7 +69,7 @@ Undo.prototype.restoreIDs = function() {
 		var layer = paper.project.layers[i];
 		visitItem(layer);
 	}
-	if (maxId > Item._id)
+	if (maxId > paper.Item._id)
 		Item._id = maxId;
 }
 
@@ -89,7 +89,7 @@ Undo.prototype.captureIDs = function() {
 }
 
 Undo.prototype.snapshotProject = function() {
-	var json = paper.Base.serialize(paper.project); //paper.project.exportJSON();
+	var json = paper.project.exportJSON({ asString: false });
 	// TODO: Remove objects marked as guides.
 	return json;
 }
@@ -425,9 +425,9 @@ function pasteSelection() {
 
 function deleteSelection() {
 	var selected = paper.project.selectedItems;
-	for (var i = 0; i < selected.length; i++) {
+	for (var i = 0; i < selected.length; i++)
 		selected[i].remove();
-	}
+
 	undo.snapshot("Delete");
 
 	updateSelectionState();
@@ -443,7 +443,7 @@ function captureSelectionState() {
 		if (item.guide) continue;
 		var orig = {
 			id: item.id,
-			json: paper.Base.serialize(item), // item.exportJSON();
+			json: item.exportJSON({ asString: false }),
 			selectedSegments: []
 		};
 		originalContent.push(orig);
@@ -570,9 +570,9 @@ toolSelect.duplicates = null;
 
 toolSelect.createDuplicates = function(content) {
 	this.duplicates = [];
-	for (var key in content) {
-		var json = content[key];
-		var item = paper.Base.importJSON(json);
+	for (var i = 0; i < content.length; i++) {
+		var orig = content[i];
+		var item = paper.Base.importJSON(orig.json);
 		if (item) {
 			item.selected = false;
 			this.duplicates.push(item);
@@ -1139,12 +1139,8 @@ toolRotate.on({
 		if (this.hitItem) {
 			if (this.hitItem.type == 'bounds') {
 				this.originalContent = captureSelectionState();
-				this.originalShape = paper.Base.serialize(selectionBoundsShape);
-
+				this.originalShape = selectionBoundsShape.exportJSON({ asString: false });
 				this.mode = 'rotate';
-//				var pivotName = paper.Base.camelize(oppositeCorner[this.hitItem.name]);
-//				var cornerName = paper.Base.camelize(this.hitItem.name);
-//				this.corner = selectionBounds[cornerName].clone();
 				this.originalCenter = selectionBounds.center.clone();
 				var delta = event.point.subtract(this.originalCenter);
 				this.originalAngle = Math.atan2(delta.y, delta.x);
