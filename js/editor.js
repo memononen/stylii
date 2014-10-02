@@ -1456,7 +1456,7 @@ toolPen.on({
 				var right = parts[1];
 
 				var x = left[6], y = left[7];
-				var segment = new Segment(new paper.Point(x, y),
+				var segment = new paper.Segment(new paper.Point(x, y),
 					!isLinear && new paper.Point(left[4] - x, left[5] - y),
 					!isLinear && new paper.Point(right[2] - x, right[3] - y));
 
